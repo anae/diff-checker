@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Diff Checker Ananaba.be — compare, fusionne et télécharge deux versions de texte avec navigation entre chaque différence.">
+  <meta name="theme-color" content="#0b0d0c">
+  <title>Diff Checker — Ananaba.be</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=20261021-2">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Aller à la comparaison</a>
+
+  <main class="app-shell">
+    <header class="masthead">
+      <a class="brand" href="https://ananaba.be/applications/" aria-label="Retour aux applications Ananaba.be">
+        <span class="brand-mark" aria-hidden="true">Æ</span>
+        <span>ANANABA.BE / TOOLBOX</span>
+      </a>
+
+      <div class="title-row">
+        <div>
+          <h1>Diff <span>Checker</span></h1>
+          <p>Compare deux textes. Repère chaque écart. Fusionne ce qui doit l’être.</p>
+        </div>
+        <div class="product-badge"><span aria-hidden="true"></span> Fusion bidirectionnelle</div>
+      </div>
+    </header>
+
+    <section class="command-bar" aria-label="Commandes de comparaison">
+      <div class="diff-summary" aria-live="polite">
+        <span class="summary-pulse" aria-hidden="true"></span>
+        <strong id="diffCount">0 différence</strong>
+        <span id="diffPosition">Les textes sont identiques</span>
+      </div>
+
+      <div class="command-actions">
+        <div class="nav-group" aria-label="Navigation entre les différences">
+          <button class="icon-button" id="previousDiff" type="button" title="Différence précédente" aria-label="Différence précédente" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 14 5-5 5 5"/></svg>
+          </button>
+          <button class="icon-button" id="nextDiff" type="button" title="Différence suivante" aria-label="Différence suivante" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+        </div>
+
+        <label class="select-control" for="comparisonMode">
+          <span>Comparaison</span>
+          <select id="comparisonMode">
+            <option value="exact">Exacte</option>
+            <option value="trim">Ignorer les espaces de fin</option>
+          </select>
+        </label>
+
+        <button class="text-button" id="swapTexts" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11m0 0-3-3m3 3-3 3M17 17H6m0 0 3 3m-3-3 3-3"/></svg>
+          Inverser
+        </button>
+        <button class="text-button" id="clearTexts" type="button">Effacer</button>
+      </div>
+    </section>
+
+    <section class="workspace" id="workspace" aria-label="Comparateur de textes">
+      <article class="editor-panel" data-side="left">
+        <header class="panel-header">
+          <div class="panel-title">
+            <span class="panel-kicker">GAUCHE · ORIGINAL</span>
+            <input id="leftFilename" type="text" value="original.txt" aria-label="Nom du fichier de gauche">
+          </div>
+          <div class="panel-actions">
+            <input class="file-input" id="leftFile" type="file" accept=".txt,text/plain">
+            <label class="small-button" for="leftFile">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5"/></svg>
+              Ouvrir
+            </label>
+            <button class="small-button small-button-accent" id="downloadLeft" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+              Enregistrer
+            </button>
+          </div>
+        </header>
+        <div class="editor" id="leftEditor">
+          <div class="line-numbers" id="leftLines" aria-hidden="true"></div>
+          <div class="text-stage">
+            <div class="line-highlights" id="leftHighlights" aria-hidden="true"></div>
+            <textarea id="leftText" aria-label="Texte original" wrap="off" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+          </div>
+        </div>
+        <footer class="panel-footer"><span id="leftStats">0 ligne · 0 caractère</span><span>UTF-8</span></footer>
+      </article>
+
+      <div class="merge-rail" id="mergeRail" aria-label="Actions de fusion"></div>
+
+      <article class="editor-panel" data-side="right">
+        <header class="panel-header">
+          <div class="panel-title">
+            <span class="panel-kicker">DROITE · RÉVISION</span>
+            <input id="rightFilename" type="text" value="revision.txt" aria-label="Nom du fichier de droite">
+          </div>
+          <div class="panel-actions">
+            <input class="file-input" id="rightFile" type="file" accept=".txt,text/plain">
+            <label class="small-button" for="rightFile">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 14v5h14v-5"/></svg>
+              Ouvrir
+            </label>
+            <button class="small-button small-button-accent" id="downloadRight" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+              Enregistrer
+            </button>
+          </div>
+        </header>
+        <div class="editor" id="rightEditor">
+          <div class="line-numbers" id="rightLines" aria-hidden="true"></div>
+          <div class="text-stage">
+            <div class="line-highlights" id="rightHighlights" aria-hidden="true"></div>
+            <textarea id="rightText" aria-label="Texte révisé" wrap="off" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+          </div>
+        </div>
+        <footer class="panel-footer"><span id="rightStats">0 ligne · 0 caractère</span><span>UTF-8</span></footer>
+      </article>
+
+      <aside class="minimap-panel" aria-label="Vue d’ensemble des différences">
+        <div class="minimap-label">MAP</div>
+        <button id="minimap" type="button" aria-label="Naviguer dans le fichier">
+          <span class="minimap-track" id="minimapTrack"></span>
+          <span class="minimap-viewport" id="minimapViewport"></span>
+        </button>
+        <div class="minimap-legend"><span></span>Écart</div>
+      </aside>
+    </section>
+
+    <footer class="app-footer">
+      <p>Importez. Comparez. Fusionnez. Téléchargez.</p>
+      <p><kbd>⌘</kbd><kbd>↓</kbd> écart suivant · <kbd>⌘</kbd><kbd>↑</kbd> précédent</p>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js?v=20261021-2"></script>
+  <script src="tracker.js?v=20261021-1" data-site="diffchecker" defer></script>
+</body>
+</html>
