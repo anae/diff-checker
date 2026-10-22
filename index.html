@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#0b0d0c">
   <title>Diff Checker — Ananaba.be</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261021-2">
+  <link rel="stylesheet" href="styles.css?v=20261022-1">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Aller à la comparaison</a>
@@ -122,11 +122,14 @@
 
       <aside class="minimap-panel" aria-label="Vue d’ensemble des différences">
         <div class="minimap-label">MAP</div>
-        <button id="minimap" type="button" aria-label="Naviguer dans le fichier">
+        <div id="minimap" role="scrollbar" tabindex="0" aria-label="Naviguer dans le fichier" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <span class="minimap-track" id="minimapTrack"></span>
           <span class="minimap-viewport" id="minimapViewport"></span>
-        </button>
-        <div class="minimap-legend"><span></span>Écart</div>
+        </div>
+        <div class="minimap-legend" aria-hidden="true">
+          <span class="legend-item"><i class="removed"></i>−</span>
+          <span class="legend-item"><i class="added"></i>+</span>
+        </div>
       </aside>
     </section>
 
@@ -138,7 +141,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js?v=20261021-2"></script>
+  <script src="app.js?v=20261022-1"></script>
   <script src="tracker.js?v=20261021-1" data-site="diffchecker" defer></script>
 </body>
 </html>

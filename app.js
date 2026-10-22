@@ -40,6 +40,10 @@ let currentHunk = -1;
 let compareTimer = null;
 let toastTimer = null;
 let syncingScroll = false;
+let alignmentAnchors = [{ left: 0, right: 0 }];
+let minimapDragging = false;
+let minimapDragOffset = 0;
+let minimapDragMoved = false;
 
 function splitLines(value) {
   return value.replace(/\r\n?/g, '\n').split('\n');
@@ -49,27 +53,14 @@ function comparable(line) {
   return els.comparisonMode.value === 'trim' ? line.replace(/[ \t]+$/g, '') : line;
 }
 
-function buildDiff(leftLines, rightLines) {
-  const n = leftLines.length;
-  const m = rightLines.length;
-
-  if (n * m > MAX_LCS_CELLS) {
-    let prefix = 0;
-    while (prefix < n && prefix < m && comparable(leftLines[prefix]) === comparable(rightLines[prefix])) prefix += 1;
-    let suffix = 0;
-    while (suffix < n - prefix && suffix < m - prefix && comparable(leftLines[n - 1 - suffix]) === comparable(rightLines[m - 1 - suffix])) suffix += 1;
-    const ops = [];
-    for (let i = 0; i < prefix; i += 1) ops.push({ type: 'equal', left: i, right: i });
-    for (let i = prefix; i < n - suffix; i += 1) ops.push({ type: 'remove', left: i });
-    for (let j = prefix; j < m - suffix; j += 1) ops.push({ type: 'add', right: j });
-    for (let i = 0; i < suffix; i += 1) ops.push({ type: 'equal', left: n - suffix + i, right: m - suffix + i });
-    return ops;
-  }
-
+function buildLcsSegment(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd) {
+  const n = leftEnd - leftStart;
+  const m = rightEnd - rightStart;
   const rows = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+
   for (let i = n - 1; i >= 0; i -= 1) {
     for (let j = m - 1; j >= 0; j -= 1) {
-      rows[i][j] = comparable(leftLines[i]) === comparable(rightLines[j])
+      rows[i][j] = comparable(leftLines[leftStart + i]) === comparable(rightLines[rightStart + j])
         ? rows[i + 1][j + 1] + 1
         : Math.max(rows[i + 1][j], rows[i][j + 1]);
     }
@@ -79,21 +70,137 @@ function buildDiff(leftLines, rightLines) {
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
-    if (comparable(leftLines[i]) === comparable(rightLines[j])) {
-      ops.push({ type: 'equal', left: i, right: j });
+    if (comparable(leftLines[leftStart + i]) === comparable(rightLines[rightStart + j])) {
+      ops.push({ type: 'equal', left: leftStart + i, right: rightStart + j });
       i += 1;
       j += 1;
     } else if (rows[i + 1][j] >= rows[i][j + 1]) {
-      ops.push({ type: 'remove', left: i });
+      ops.push({ type: 'remove', left: leftStart + i });
       i += 1;
     } else {
-      ops.push({ type: 'add', right: j });
+      ops.push({ type: 'add', right: rightStart + j });
       j += 1;
     }
   }
-  while (i < n) { ops.push({ type: 'remove', left: i }); i += 1; }
-  while (j < m) { ops.push({ type: 'add', right: j }); j += 1; }
+  while (i < n) { ops.push({ type: 'remove', left: leftStart + i }); i += 1; }
+  while (j < m) { ops.push({ type: 'add', right: rightStart + j }); j += 1; }
   return ops;
+}
+
+function findPatienceAnchors(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd) {
+  const leftOccurrences = new Map();
+  const rightOccurrences = new Map();
+
+  for (let i = leftStart; i < leftEnd; i += 1) {
+    const key = comparable(leftLines[i]);
+    const entry = leftOccurrences.get(key) || { count: 0, index: i };
+    entry.count += 1;
+    entry.index = i;
+    leftOccurrences.set(key, entry);
+  }
+  for (let i = rightStart; i < rightEnd; i += 1) {
+    const key = comparable(rightLines[i]);
+    const entry = rightOccurrences.get(key) || { count: 0, index: i };
+    entry.count += 1;
+    entry.index = i;
+    rightOccurrences.set(key, entry);
+  }
+
+  const pairs = [];
+  leftOccurrences.forEach((leftEntry, key) => {
+    const rightEntry = rightOccurrences.get(key);
+    if (leftEntry.count === 1 && rightEntry?.count === 1) {
+      pairs.push({ left: leftEntry.index, right: rightEntry.index });
+    }
+  });
+  pairs.sort((a, b) => a.left - b.left);
+  if (!pairs.length) return [];
+
+  const tails = [];
+  const tailIndices = [];
+  const previous = new Int32Array(pairs.length).fill(-1);
+  pairs.forEach((pair, index) => {
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (tails[middle] < pair.right) low = middle + 1;
+      else high = middle;
+    }
+    if (low > 0) previous[index] = tailIndices[low - 1];
+    tails[low] = pair.right;
+    tailIndices[low] = index;
+  });
+
+  const anchors = [];
+  let cursor = tailIndices[tails.length - 1];
+  while (cursor >= 0) {
+    anchors.push(pairs[cursor]);
+    cursor = previous[cursor];
+  }
+  return anchors.reverse();
+}
+
+function diffRange(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd, ops) {
+  while (leftStart < leftEnd && rightStart < rightEnd
+    && comparable(leftLines[leftStart]) === comparable(rightLines[rightStart])) {
+    ops.push({ type: 'equal', left: leftStart, right: rightStart });
+    leftStart += 1;
+    rightStart += 1;
+  }
+
+  const suffix = [];
+  while (leftStart < leftEnd && rightStart < rightEnd
+    && comparable(leftLines[leftEnd - 1]) === comparable(rightLines[rightEnd - 1])) {
+    leftEnd -= 1;
+    rightEnd -= 1;
+    suffix.push({ type: 'equal', left: leftEnd, right: rightEnd });
+  }
+
+  if (leftStart === leftEnd || rightStart === rightEnd) {
+    for (let i = leftStart; i < leftEnd; i += 1) ops.push({ type: 'remove', left: i });
+    for (let i = rightStart; i < rightEnd; i += 1) ops.push({ type: 'add', right: i });
+  } else if ((leftEnd - leftStart) * (rightEnd - rightStart) <= MAX_LCS_CELLS) {
+    ops.push(...buildLcsSegment(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd));
+  } else {
+    const anchors = findPatienceAnchors(leftLines, rightLines, leftStart, leftEnd, rightStart, rightEnd);
+    if (anchors.length) {
+      let previousLeft = leftStart;
+      let previousRight = rightStart;
+      anchors.forEach((anchor) => {
+        diffRange(leftLines, rightLines, previousLeft, anchor.left, previousRight, anchor.right, ops);
+        ops.push({ type: 'equal', left: anchor.left, right: anchor.right });
+        previousLeft = anchor.left + 1;
+        previousRight = anchor.right + 1;
+      });
+      diffRange(leftLines, rightLines, previousLeft, leftEnd, previousRight, rightEnd, ops);
+    } else {
+      for (let i = leftStart; i < leftEnd; i += 1) ops.push({ type: 'remove', left: i });
+      for (let i = rightStart; i < rightEnd; i += 1) ops.push({ type: 'add', right: i });
+    }
+  }
+
+  for (let i = suffix.length - 1; i >= 0; i -= 1) ops.push(suffix[i]);
+}
+
+function buildDiff(leftLines, rightLines) {
+  const ops = [];
+  diffRange(leftLines, rightLines, 0, leftLines.length, 0, rightLines.length, ops);
+  return ops;
+}
+
+function buildAlignmentAnchors(ops, leftCount, rightCount) {
+  const anchors = [{ left: 0, right: 0 }];
+  ops.forEach((op) => {
+    if (op.type !== 'equal') return;
+    const previous = anchors.at(-1);
+    if (op.left !== previous.left || op.right !== previous.right) {
+      anchors.push({ left: op.left, right: op.right });
+    }
+  });
+  const last = anchors.at(-1);
+  if (last.left !== leftCount || last.right !== rightCount) anchors.push({ left: leftCount, right: rightCount });
+  return anchors;
 }
 
 function groupHunks(ops) {
@@ -135,7 +242,9 @@ function compareNow({ preserveSelection = false } = {}) {
   clearTimeout(compareTimer);
   const left = splitLines(els.leftText.value);
   const right = splitLines(els.rightText.value);
-  hunks = groupHunks(buildDiff(left, right));
+  const ops = buildDiff(left, right);
+  hunks = groupHunks(ops);
+  alignmentAnchors = buildAlignmentAnchors(ops, left.length, right.length);
 
   if (!preserveSelection || currentHunk >= hunks.length) currentHunk = hunks.length ? 0 : -1;
 
@@ -158,21 +267,21 @@ function updateStats(left, right) {
   els.rightStats.textContent = format(right, els.rightText.value);
 }
 
-function changedSets(side) {
-  const changed = new Set();
+function changedLineTypes(side) {
+  const changed = new Map();
   hunks.forEach((hunk) => {
     const indices = side === 'left' ? hunk.leftIndices : hunk.rightIndices;
-    indices.forEach((index) => changed.add(index));
+    indices.forEach((index) => changed.set(index, side === 'left' ? 'removed' : 'added'));
   });
   return changed;
 }
 
 function renderLineNumbers(leftCount, rightCount) {
   const render = (count, target, side) => {
-    const changed = changedSets(side);
+    const changed = changedLineTypes(side);
     const active = currentHunk >= 0 ? new Set(side === 'left' ? hunks[currentHunk].leftIndices : hunks[currentHunk].rightIndices) : new Set();
     target.innerHTML = Array.from({ length: count }, (_, index) => {
-      const classes = [changed.has(index) ? 'changed' : '', active.has(index) ? 'current' : ''].filter(Boolean).join(' ');
+      const classes = [changed.get(index) || '', active.has(index) ? 'current' : ''].filter(Boolean).join(' ');
       return `<span class="${classes}">${index + 1}</span>`;
     }).join('');
   };
@@ -187,9 +296,9 @@ function renderHighlights() {
     const blocks = [];
     hunks.forEach((hunk, hunkIndex) => {
       const indices = side === 'left' ? hunk.leftIndices : hunk.rightIndices;
-      const addition = (side === 'right' && hunk.type === 'add') || (side === 'left' && hunk.type === 'remove');
+      const lineType = side === 'left' ? 'removed' : 'added';
       indices.forEach((line) => {
-        blocks.push(`<span class="highlight-line ${addition ? 'addition' : ''} ${hunkIndex === currentHunk ? 'current' : ''}" data-line="${line}" style="top:${EDITOR_PADDING + line * LINE_HEIGHT}px"></span>`);
+        blocks.push(`<span class="highlight-line ${lineType} ${hunkIndex === currentHunk ? 'current' : ''}" data-line="${line}" style="top:${EDITOR_PADDING + line * LINE_HEIGHT}px"></span>`);
       });
     });
     target.innerHTML = blocks.join('');
@@ -215,13 +324,25 @@ function renderMergeRail() {
   const rightScroll = els.rightText.scrollTop;
   const headerOffset = document.querySelector('.editor-panel[data-side="left"] .panel-header').offsetHeight;
   const editorHeight = document.querySelector('#leftEditor').clientHeight;
+  const clampY = (value) => Math.max(0, Math.min(editorHeight, value));
   els.mergeRail.innerHTML = hunks.map((hunk, index) => {
-    const leftMiddle = EDITOR_PADDING + ((hunk.leftStart + Math.max(1, hunk.leftEnd - hunk.leftStart) / 2) * LINE_HEIGHT) - leftScroll;
-    const rightMiddle = EDITOR_PADDING + ((hunk.rightStart + Math.max(1, hunk.rightEnd - hunk.rightStart) / 2) * LINE_HEIGHT) - rightScroll;
+    const leftSize = hunk.leftEnd - hunk.leftStart;
+    const rightSize = hunk.rightEnd - hunk.rightStart;
+    const leftTop = EDITOR_PADDING + hunk.leftStart * LINE_HEIGHT - leftScroll;
+    const rightTop = EDITOR_PADDING + hunk.rightStart * LINE_HEIGHT - rightScroll;
+    const leftBottom = leftTop + Math.max(leftSize * LINE_HEIGHT, 4);
+    const rightBottom = rightTop + Math.max(rightSize * LINE_HEIGHT, 4);
+    const visible = leftBottom >= 0 && leftTop <= editorHeight || rightBottom >= 0 && rightTop <= editorHeight;
+    const leftMiddle = (leftTop + leftBottom) / 2;
+    const rightMiddle = (rightTop + rightBottom) / 2;
     const rawTop = headerOffset + (leftMiddle + rightMiddle) / 2;
     const top = Math.max(headerOffset + 18, Math.min(headerOffset + editorHeight - 18, rawTop));
-    const visible = rawTop > headerOffset && rawTop < headerOffset + editorHeight;
-    return `<div class="merge-action" style="top:${top}px;${visible ? '' : 'display:none'}" data-index="${index}">
+    const bridgeClass = hunk.type === 'change' ? 'changed' : hunk.type;
+    const bridge = visible ? `<svg class="diff-bridge ${bridgeClass} ${index === currentHunk ? 'current' : ''}" data-index="${index}" style="top:${headerOffset}px;height:${editorHeight}px" viewBox="0 0 100 ${editorHeight}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="bridge-${index}" x1="0" x2="1"><stop offset="0" stop-color="#ff4d59"/><stop offset="1" stop-color="#64e68a"/></linearGradient></defs>
+      <path d="M0 ${clampY(leftTop)} L0 ${clampY(leftBottom)} L100 ${clampY(rightBottom)} L100 ${clampY(rightTop)} Z"${hunk.type === 'change' ? ` fill="url(#bridge-${index})"` : ''}/>
+    </svg>` : '';
+    return `${bridge}<div class="merge-action" style="top:${top}px;${visible ? '' : 'display:none'}" data-index="${index}">
       <button type="button" data-direction="right-to-left" title="Appliquer la droite à gauche" aria-label="Appliquer la différence ${index + 1} de droite à gauche"><svg viewBox="0 0 24 24"><path d="M19 12H5m0 0 5-5m-5 5 5 5"/></svg></button>
       <button type="button" data-direction="left-to-right" title="Appliquer la gauche à droite" aria-label="Appliquer la différence ${index + 1} de gauche à droite"><svg viewBox="0 0 24 24"><path d="M5 12h14m0 0-5-5m5 5-5 5"/></svg></button>
     </div>`;
@@ -229,13 +350,18 @@ function renderMergeRail() {
 }
 
 function renderMinimap() {
-  const total = Math.max(splitLines(els.leftText.value).length, splitLines(els.rightText.value).length, 1);
+  const leftTotal = Math.max(splitLines(els.leftText.value).length, 1);
+  const rightTotal = Math.max(splitLines(els.rightText.value).length, 1);
   els.minimapTrack.innerHTML = hunks.map((hunk, index) => {
-    const start = Math.min(hunk.leftStart, hunk.rightStart);
-    const size = Math.max(hunk.leftEnd - hunk.leftStart, hunk.rightEnd - hunk.rightStart, 1);
-    const top = (start / total) * 100;
-    const height = Math.max(0.75, (size / total) * 100);
-    return `<span class="minimap-marker ${index === currentHunk ? 'current' : ''}" data-index="${index}" style="top:${top}%;height:${height}%"></span>`;
+    const active = index === currentHunk ? 'current' : '';
+    const markers = [];
+    if (hunk.leftIndices.length) {
+      markers.push(`<span class="minimap-marker removed ${active}" data-index="${index}" style="top:${(hunk.leftStart / leftTotal) * 100}%;height:${Math.max(.75, ((hunk.leftEnd - hunk.leftStart) / leftTotal) * 100)}%"></span>`);
+    }
+    if (hunk.rightIndices.length) {
+      markers.push(`<span class="minimap-marker added ${active}" data-index="${index}" style="top:${(hunk.rightStart / rightTotal) * 100}%;height:${Math.max(.75, ((hunk.rightEnd - hunk.rightStart) / rightTotal) * 100)}%"></span>`);
+    }
+    return markers.join('');
   }).join('');
   updateMinimapViewport();
 }
@@ -253,9 +379,55 @@ function updateMinimapViewport() {
   const maxScroll = Math.max(text.scrollHeight - text.clientHeight, 1);
   const totalHeight = Math.max(text.scrollHeight, 1);
   const ratio = Math.min(1, text.clientHeight / totalHeight);
-  const top = (text.scrollTop / maxScroll) * (1 - ratio) * 100;
-  els.minimapViewport.style.height = `${Math.max(7, ratio * 100)}%`;
+  const visibleRatio = Math.max(.07, ratio);
+  const top = (text.scrollTop / maxScroll) * (1 - visibleRatio) * 100;
+  els.minimapViewport.style.height = `${visibleRatio * 100}%`;
   els.minimapViewport.style.top = `${top}%`;
+  els.minimap.setAttribute('aria-valuenow', String(Math.round((text.scrollTop / maxScroll) * 100)));
+}
+
+function mapLineAcross(side, line) {
+  const sourceKey = side;
+  const targetKey = side === 'left' ? 'right' : 'left';
+  let previous = alignmentAnchors[0];
+  for (let index = 1; index < alignmentAnchors.length; index += 1) {
+    const next = alignmentAnchors[index];
+    if (line <= next[sourceKey]) {
+      const span = next[sourceKey] - previous[sourceKey];
+      if (span <= 0) return next[targetKey];
+      const progress = (line - previous[sourceKey]) / span;
+      return previous[targetKey] + progress * (next[targetKey] - previous[targetKey]);
+    }
+    previous = next;
+  }
+  return alignmentAnchors.at(-1)[targetKey];
+}
+
+function syncOtherEditor(source, side) {
+  const other = side === 'left' ? els.rightText : els.leftText;
+  const sourceLine = source.scrollTop / LINE_HEIGHT;
+  const targetLine = mapLineAcross(side, sourceLine);
+  other.scrollTop = Math.max(0, Math.min(other.scrollHeight - other.clientHeight, targetLine * LINE_HEIGHT));
+}
+
+function scrollEditorsToRatio(ratio) {
+  const safeRatio = Math.max(0, Math.min(1, ratio));
+  syncingScroll = true;
+  [els.leftText, els.rightText].forEach((text) => {
+    text.scrollTop = safeRatio * Math.max(text.scrollHeight - text.clientHeight, 0);
+  });
+  syncingScroll = false;
+  syncDecorations('left');
+  syncDecorations('right');
+  renderMergeRail();
+  updateMinimapViewport();
+}
+
+function ratioFromMinimapPointer(event) {
+  const rect = els.minimap.getBoundingClientRect();
+  const viewportHeight = els.minimapViewport.getBoundingClientRect().height;
+  const available = Math.max(rect.height - viewportHeight, 1);
+  return (event.clientY - rect.top - minimapDragOffset) / available;
 }
 
 function navigateTo(index, { focus = true } = {}) {
@@ -348,10 +520,7 @@ els.rightText.value = sampleRight;
     updateMinimapViewport();
     if (!syncingScroll) {
       syncingScroll = true;
-      const other = side === 'left' ? els.rightText : els.leftText;
-      const sourceMax = Math.max(text.scrollHeight - text.clientHeight, 1);
-      const otherMax = Math.max(other.scrollHeight - other.clientHeight, 1);
-      other.scrollTop = (text.scrollTop / sourceMax) * otherMax;
+      syncOtherEditor(text, side);
       syncingScroll = false;
     }
   });
@@ -387,24 +556,51 @@ els.swapTexts.addEventListener('click', () => {
 });
 els.mergeRail.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-direction]');
-  if (!button) return;
-  mergeHunk(Number(button.closest('.merge-action').dataset.index), button.dataset.direction);
+  if (button) {
+    mergeHunk(Number(button.closest('.merge-action').dataset.index), button.dataset.direction);
+    return;
+  }
+  const bridge = event.target.closest('.diff-bridge[data-index]');
+  if (bridge) navigateTo(Number(bridge.dataset.index));
 });
 els.minimap.addEventListener('click', (event) => {
+  if (minimapDragMoved) { minimapDragMoved = false; return; }
   const marker = event.target.closest('.minimap-marker');
   if (marker) { navigateTo(Number(marker.dataset.index)); return; }
-  const rect = els.minimap.getBoundingClientRect();
-  const ratio = (event.clientY - rect.top) / rect.height;
-  if (!hunks.length) return;
-  const total = Math.max(splitLines(els.leftText.value).length, splitLines(els.rightText.value).length, 1);
-  const targetLine = ratio * total;
-  let closest = 0;
-  hunks.forEach((hunk, index) => {
-    const currentDistance = Math.abs(Math.min(hunk.leftStart, hunk.rightStart) - targetLine);
-    const bestDistance = Math.abs(Math.min(hunks[closest].leftStart, hunks[closest].rightStart) - targetLine);
-    if (currentDistance < bestDistance) closest = index;
-  });
-  navigateTo(closest);
+  scrollEditorsToRatio(ratioFromMinimapPointer(event));
+});
+els.minimap.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  const viewportRect = els.minimapViewport.getBoundingClientRect();
+  minimapDragging = true;
+  minimapDragMoved = false;
+  minimapDragOffset = event.target === els.minimapViewport
+    ? event.clientY - viewportRect.top
+    : viewportRect.height / 2;
+  els.minimap.setPointerCapture(event.pointerId);
+  if (event.target !== els.minimapViewport && !event.target.closest('.minimap-marker')) {
+    scrollEditorsToRatio(ratioFromMinimapPointer(event));
+  }
+});
+els.minimap.addEventListener('pointermove', (event) => {
+  if (!minimapDragging) return;
+  minimapDragMoved = true;
+  scrollEditorsToRatio(ratioFromMinimapPointer(event));
+});
+const stopMinimapDrag = (event) => {
+  if (!minimapDragging) return;
+  minimapDragging = false;
+  if (els.minimap.hasPointerCapture(event.pointerId)) els.minimap.releasePointerCapture(event.pointerId);
+};
+els.minimap.addEventListener('pointerup', stopMinimapDrag);
+els.minimap.addEventListener('pointercancel', stopMinimapDrag);
+els.minimap.addEventListener('keydown', (event) => {
+  const current = Number(els.minimap.getAttribute('aria-valuenow') || 0) / 100;
+  const step = event.shiftKey ? .2 : .05;
+  if (event.key === 'Home') { event.preventDefault(); scrollEditorsToRatio(0); }
+  if (event.key === 'End') { event.preventDefault(); scrollEditorsToRatio(1); }
+  if (event.key === 'ArrowUp' || event.key === 'PageUp') { event.preventDefault(); scrollEditorsToRatio(current - step); }
+  if (event.key === 'ArrowDown' || event.key === 'PageDown') { event.preventDefault(); scrollEditorsToRatio(current + step); }
 });
 window.addEventListener('keydown', (event) => {
   if (!(event.metaKey || event.ctrlKey)) return;

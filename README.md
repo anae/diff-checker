@@ -11,7 +11,9 @@ Un comparateur de texte précis, pensé pour repérer, parcourir et fusionner le
 - comparaison ligne par ligne en temps réel ;
 - navigation entre chaque différence ;
 - fusion bidirectionnelle, changement par changement ;
-- numéros de ligne et mini-carte du document ;
+- suppressions en rouge, ajouts en vert et passerelles visuelles entre les deux versions ;
+- numéros de ligne et mini-carte navigable avec fenêtre de lecture déplaçable ;
+- comparaison optimisée pour les documents de plusieurs milliers de lignes ;
 - import et téléchargement de fichiers `.txt` ;
 - raccourcis clavier et interface responsive.
 
