@@ -430,22 +430,26 @@ function ratioFromMinimapPointer(event) {
   return (event.clientY - rect.top - minimapDragOffset) / available;
 }
 
-function navigateTo(index, { focus = true } = {}) {
+function navigateTo(index, { focus = false } = {}) {
   if (!hunks.length) return;
   currentHunk = (index + hunks.length) % hunks.length;
   const hunk = hunks[currentHunk];
-  const scrollToLine = (text, line) => {
-    const top = Math.max(0, EDITOR_PADDING + line * LINE_HEIGHT - text.clientHeight * .38);
-    text.scrollTo({ top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  };
-  scrollToLine(els.leftText, hunk.leftStart);
-  scrollToLine(els.rightText, hunk.rightStart);
+  const scrollTopForLine = (text, line) => Math.max(
+    0,
+    Math.min(text.scrollHeight - text.clientHeight, EDITOR_PADDING + line * LINE_HEIGHT - text.clientHeight * .38),
+  );
+  syncingScroll = true;
+  els.leftText.scrollTop = scrollTopForLine(els.leftText, hunk.leftStart);
+  els.rightText.scrollTop = scrollTopForLine(els.rightText, hunk.rightStart);
+  syncingScroll = false;
+  syncDecorations('left');
+  syncDecorations('right');
   renderLineNumbers(splitLines(els.leftText.value).length, splitLines(els.rightText.value).length);
   renderHighlights();
   renderSummary();
   renderMinimap();
+  renderMergeRail();
   if (focus) (hunk.rightIndices.length ? els.rightText : els.leftText).focus({ preventScroll: true });
-  setTimeout(renderMergeRail, 180);
 }
 
 function mergeHunk(index, direction) {

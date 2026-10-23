@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#0b0d0c">
   <title>Diff Checker — Ananaba.be</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261022-1">
+  <link rel="stylesheet" href="styles.css?v=20261023-1">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Aller à la comparaison</a>
@@ -81,9 +81,13 @@
           </div>
         </header>
         <div class="editor" id="leftEditor">
-          <div class="line-numbers" id="leftLines" aria-hidden="true"></div>
+          <div class="line-numbers" aria-hidden="true">
+            <div class="line-numbers-content" id="leftLines"></div>
+          </div>
           <div class="text-stage">
-            <div class="line-highlights" id="leftHighlights" aria-hidden="true"></div>
+            <div class="line-highlights" aria-hidden="true">
+              <div class="line-highlights-content" id="leftHighlights"></div>
+            </div>
             <textarea id="leftText" aria-label="Texte original" wrap="off" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
           </div>
         </div>
@@ -111,9 +115,13 @@
           </div>
         </header>
         <div class="editor" id="rightEditor">
-          <div class="line-numbers" id="rightLines" aria-hidden="true"></div>
+          <div class="line-numbers" aria-hidden="true">
+            <div class="line-numbers-content" id="rightLines"></div>
+          </div>
           <div class="text-stage">
-            <div class="line-highlights" id="rightHighlights" aria-hidden="true"></div>
+            <div class="line-highlights" aria-hidden="true">
+              <div class="line-highlights-content" id="rightHighlights"></div>
+            </div>
             <textarea id="rightText" aria-label="Texte révisé" wrap="off" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
           </div>
         </div>
@@ -141,7 +149,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js?v=20261022-1"></script>
+  <script src="app.js?v=20261023-2"></script>
   <script src="tracker.js?v=20261021-1" data-site="diffchecker" defer></script>
 </body>
 </html>

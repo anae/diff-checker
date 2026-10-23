@@ -90,13 +90,15 @@ h1 span { color: var(--accent); }
 .small-button-accent { border-color: rgba(209,255,53,.28); background: var(--accent-soft); color: var(--accent); }
 
 .editor { display: grid; min-height: 0; height: 100%; grid-template-columns: 54px minmax(0,1fr); overflow: hidden; background: #111412; }
-.line-numbers { min-height: 0; overflow: hidden; padding: var(--editor-padding) 10px var(--editor-padding) 0; border-right: 1px solid var(--border); background: #0d100e; color: #59605b; text-align: right; font: 12px/var(--line-height) ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; user-select: none; }
-.line-numbers span { display: block; height: var(--line-height); }
+.line-numbers { min-height: 0; overflow: hidden; border-right: 1px solid var(--border); background: #0d100e; color: #59605b; text-align: right; font: 12px/var(--line-height) ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; user-select: none; }
+.line-numbers-content { width: 100%; min-height: 100%; padding: var(--editor-padding) 10px var(--editor-padding) 0; will-change: transform; }
+.line-numbers-content span { display: block; height: var(--line-height); }
 .line-numbers span.removed { color: #ff9494; background: linear-gradient(90deg, transparent, rgba(255,77,89,.11)); }
 .line-numbers span.added { color: #7ff0a1; background: linear-gradient(90deg, transparent, rgba(53,217,107,.1)); }
 .line-numbers span.current { color: var(--text); font-weight: 800; }
 .text-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .line-highlights { position: absolute; z-index: 0; inset: 0; pointer-events: none; overflow: hidden; }
+.line-highlights-content { position: absolute; inset: 0; will-change: transform; }
 .highlight-line { position: absolute; right: 0; left: 0; height: var(--line-height); }
 .highlight-line.removed { border-left: 3px solid var(--danger-strong); background: var(--danger-soft); }
 .highlight-line.added { border-left: 3px solid var(--success-strong); background: var(--success-soft); }
